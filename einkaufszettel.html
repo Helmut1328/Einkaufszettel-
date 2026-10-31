@@ -7,6 +7,9 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Einkauf">
 <meta name="theme-color" content="#2e7d32">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="manifest" href="manifest.json">
 <title>Einkaufszettel</title>
 <style>
   :root {
@@ -48,6 +51,8 @@
   header h1 { margin: 0; font-size: 1.3rem; }
   #status { font-size: .78rem; opacity: .85; margin-top: 2px; }
   main { max-width: 600px; margin: 0 auto; padding: 14px 14px 40px; }
+  section + section { margin-top: 34px; }
+  h2 { font-size: 1.1rem; margin: 0 0 10px; }
   form { display: flex; gap: 8px; margin-bottom: 14px; }
   input[type=text] {
     flex: 1;
@@ -86,14 +91,14 @@
     border: 0; background: transparent; color: var(--muted);
     font-size: 1.4rem; padding: 4px 8px; line-height: 1;
   }
-  .empty { text-align: center; color: var(--muted); padding: 34px 10px; }
-  .actions { display: flex; justify-content: space-between; margin-top: 16px; gap: 10px; flex-wrap: wrap; }
+  .empty { text-align: center; color: var(--muted); padding: 26px 10px; }
+  .actions { display: flex; justify-content: space-between; margin-top: 14px; gap: 10px; flex-wrap: wrap; }
   .actions button {
     border: 1px solid var(--line); background: var(--card); color: var(--text);
     padding: 10px 14px; border-radius: 10px; font-size: .92rem;
   }
   .actions .danger { color: var(--danger); }
-  .hint { color: var(--muted); font-size: .8rem; margin-top: 20px; line-height: 1.4; }
+  .hint { color: var(--muted); font-size: .8rem; margin-top: 28px; line-height: 1.4; }
 </style>
 </head>
 <body>
@@ -102,17 +107,33 @@
   <div id="status">Verbinde…</div>
 </header>
 <main>
-  <form id="form" autocomplete="off">
-    <input type="text" id="input" placeholder="Was wird gebraucht?" enterkeyhint="done" maxlength="120">
-    <button class="add" type="submit">+</button>
-  </form>
-  <ul id="list"></ul>
-  <div class="empty" id="empty" hidden>Die Liste ist leer.</div>
-  <div class="actions">
-    <button id="clearDone" class="danger">Erledigte entfernen</button>
-    <button id="share">Link teilen</button>
-  </div>
-  <p class="hint">Wer diesen Link kennt, sieht und bearbeitet die Liste. Den Link nur mit deiner Frau teilen.</p>
+  <section id="einkauf">
+    <form autocomplete="off">
+      <input type="text" placeholder="Was wird gebraucht?" enterkeyhint="done" maxlength="120">
+      <button class="add" type="submit">+</button>
+    </form>
+    <ul hidden></ul>
+    <div class="empty" hidden>Die Liste ist leer.</div>
+    <div class="actions">
+      <button class="clear danger" type="button">Erledigte entfernen</button>
+      <button class="share" type="button">Link teilen</button>
+    </div>
+  </section>
+
+  <section id="todo">
+    <h2>✅ To-do</h2>
+    <form autocomplete="off">
+      <input type="text" placeholder="Was ist zu erledigen?" enterkeyhint="done" maxlength="120">
+      <button class="add" type="submit">+</button>
+    </form>
+    <ul hidden></ul>
+    <div class="empty" hidden>Nichts zu tun. 🎉</div>
+    <div class="actions">
+      <button class="clear danger" type="button">Erledigte entfernen</button>
+    </div>
+  </section>
+
+  <p class="hint">Wer diesen Link kennt, sieht und bearbeitet beide Listen. Den Link nur mit deiner Frau teilen.</p>
 </main>
 
 <script type="module">
@@ -155,73 +176,93 @@ if (params.get("liste") !== code) {
   history.replaceState(null, "", location.pathname + "?" + params.toString());
 }
 
-const items = collection(db, "lists", code, "items");
-
-const $list = document.getElementById("list");
-const $empty = document.getElementById("empty");
+// ---- Status ----
 const $status = document.getElementById("status");
-const $input = document.getElementById("input");
-let current = [];
-
-onSnapshot(items, { includeMetadataChanges: true }, snap => {
-  current = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-  render();
-  $status.textContent = snap.metadata.fromCache && snap.metadata.hasPendingWrites
+const state = {};
+function updateStatus() {
+  const vals = Object.values(state);
+  const err = vals.find(v => v.error);
+  if (err) { $status.textContent = "Fehler: " + err.error; return; }
+  $status.textContent = vals.some(v => v.offline)
     ? "Offline – wird synchronisiert, sobald du wieder Netz hast"
     : "Synchronisiert";
-}, err => {
-  console.error(err);
-  $status.textContent = "Fehler: " + (err.code || err.message);
-});
-
-function render() {
-  const sorted = [...current].sort((a, b) =>
-    (a.done === b.done ? (a.createdAt || 0) - (b.createdAt || 0) : a.done ? 1 : -1));
-  $list.innerHTML = "";
-  for (const it of sorted) {
-    const li = document.createElement("li");
-    if (it.done) li.className = "done";
-
-    const box = document.createElement("div");
-    box.className = "box";
-    box.textContent = "✓";
-
-    const txt = document.createElement("div");
-    txt.className = "txt";
-    txt.textContent = it.text;
-
-    const del = document.createElement("button");
-    del.className = "del";
-    del.setAttribute("aria-label", "Löschen");
-    del.textContent = "×";
-    del.onclick = e => { e.stopPropagation(); deleteDoc(doc(items, it.id)); };
-
-    li.onclick = () => updateDoc(doc(items, it.id), { done: !it.done });
-    li.append(box, txt, del);
-    $list.appendChild(li);
-  }
-  $empty.hidden = sorted.length > 0;
-  $list.hidden = sorted.length === 0;
 }
 
-document.getElementById("form").addEventListener("submit", e => {
-  e.preventDefault();
-  const text = $input.value.trim();
-  if (!text) return;
-  addDoc(items, { text, done: false, createdAt: Date.now() });
-  $input.value = "";
-  $input.focus();
-});
+// ---- Eine Liste (Einkauf oder To-do) aufbauen ----
+function setupList(sectionId, collName) {
+  const root = document.getElementById(sectionId);
+  const form = root.querySelector("form");
+  const input = root.querySelector("input");
+  const ul = root.querySelector("ul");
+  const empty = root.querySelector(".empty");
+  const items = collection(db, "lists", code, collName);
+  let current = [];
 
-document.getElementById("clearDone").onclick = async () => {
-  const done = current.filter(i => i.done);
-  if (!done.length) return;
-  const batch = writeBatch(db);
-  done.forEach(i => batch.delete(doc(items, i.id)));
-  await batch.commit();
-};
+  state[collName] = {};
 
-document.getElementById("share").onclick = async () => {
+  onSnapshot(items, { includeMetadataChanges: true }, snap => {
+    current = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    render();
+    state[collName] = { offline: snap.metadata.fromCache && snap.metadata.hasPendingWrites };
+    updateStatus();
+  }, err => {
+    console.error(err);
+    state[collName] = { error: err.code || err.message };
+    updateStatus();
+  });
+
+  function render() {
+    const sorted = [...current].sort((a, b) =>
+      (a.done === b.done ? (a.createdAt || 0) - (b.createdAt || 0) : a.done ? 1 : -1));
+    ul.innerHTML = "";
+    for (const it of sorted) {
+      const li = document.createElement("li");
+      if (it.done) li.className = "done";
+
+      const box = document.createElement("div");
+      box.className = "box";
+      box.textContent = "✓";
+
+      const txt = document.createElement("div");
+      txt.className = "txt";
+      txt.textContent = it.text;
+
+      const del = document.createElement("button");
+      del.className = "del";
+      del.setAttribute("aria-label", "Löschen");
+      del.textContent = "×";
+      del.onclick = e => { e.stopPropagation(); deleteDoc(doc(items, it.id)); };
+
+      li.onclick = () => updateDoc(doc(items, it.id), { done: !it.done });
+      li.append(box, txt, del);
+      ul.appendChild(li);
+    }
+    empty.hidden = sorted.length > 0;
+    ul.hidden = sorted.length === 0;
+  }
+
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    addDoc(items, { text, done: false, createdAt: Date.now() });
+    input.value = "";
+    input.focus();
+  });
+
+  root.querySelector(".clear").onclick = async () => {
+    const done = current.filter(i => i.done);
+    if (!done.length) return;
+    const batch = writeBatch(db);
+    done.forEach(i => batch.delete(doc(items, i.id)));
+    await batch.commit();
+  };
+}
+
+setupList("einkauf", "items");
+setupList("todo", "todos");
+
+document.querySelector("#einkauf .share").onclick = async () => {
   const url = location.href;
   try {
     if (navigator.share) { await navigator.share({ title: "Einkaufszettel", url }); return; }
