@@ -20,6 +20,7 @@
     --accent: #2e7d32;
     --line: #e2e8e2;
     --danger: #c62828;
+    --star: #f5a623;
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -74,8 +75,32 @@
     color: #fff;
     font-weight: 600;
   }
+  button.photo {
+    width: 50px; flex: none; padding: 0; overflow: hidden;
+    border: 1px solid var(--line); border-radius: 12px;
+    background: var(--card); font-size: 1.3rem;
+  }
+  button.photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  /* Häufig-Auswahl */
+  .favhead { display: flex; justify-content: space-between; align-items: center; margin: 2px 0 8px; }
+  .favhead h3 { margin: 0; font-size: .95rem; color: var(--muted); font-weight: 600; }
+  .link { border: 0; background: transparent; color: var(--accent); font-size: .9rem; padding: 4px 2px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 14px; border: 1px solid var(--line); border-radius: 999px;
+    background: var(--card); color: var(--text); font-size: .98rem;
+  }
+  .chip.has-img { padding-left: 6px; }
+  .chip img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
+  .chip.onlist { opacity: .45; }
+  .chip .x { color: var(--danger); font-weight: 700; }
+  .favhint { color: var(--muted); font-size: .8rem; margin: 0 0 14px; }
+  .chips:not(:empty) { margin-bottom: 14px; }
+
   ul { list-style: none; margin: 0; padding: 0; background: var(--card); border-radius: 14px; overflow: hidden; border: 1px solid var(--line); }
-  li { display: flex; align-items: center; gap: 12px; padding: 14px; border-bottom: 1px solid var(--line); }
+  li { display: flex; align-items: center; gap: 10px; padding: 12px 10px 12px 14px; border-bottom: 1px solid var(--line); }
   li:last-child { border-bottom: 0; }
   li .box {
     width: 26px; height: 26px; flex: none;
@@ -85,12 +110,16 @@
     color: transparent; font-size: 15px; font-weight: 700;
   }
   li.done .box { background: var(--accent); color: #fff; }
-  li .txt { flex: 1; font-size: 1.08rem; word-break: break-word; }
+  li .thumb { width: 46px; height: 46px; flex: none; border-radius: 8px; object-fit: cover; border: 1px solid var(--line); }
+  li.done .thumb { opacity: .5; }
+  li .txt { flex: 1; font-size: 1.08rem; word-break: break-word; min-width: 0; }
   li.done .txt { text-decoration: line-through; color: var(--muted); }
-  li .del {
+  li .ib {
     border: 0; background: transparent; color: var(--muted);
-    font-size: 1.4rem; padding: 4px 8px; line-height: 1;
+    font-size: 1.25rem; padding: 6px 5px; line-height: 1; flex: none;
   }
+  li .ib.del { font-size: 1.5rem; }
+  li .ib.star.on { color: var(--star); }
   .empty { text-align: center; color: var(--muted); padding: 26px 10px; }
   .actions { display: flex; justify-content: space-between; margin-top: 14px; gap: 10px; flex-wrap: wrap; }
   .actions button {
@@ -99,6 +128,22 @@
   }
   .actions .danger { color: var(--danger); }
   .hint { color: var(--muted); font-size: .8rem; margin-top: 28px; line-height: 1.4; }
+
+  /* Foto-Vorschau */
+  #lightbox {
+    position: fixed; inset: 0; z-index: 20;
+    background: rgba(0,0,0,.88);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 18px; padding: 20px;
+  }
+  #lightbox[hidden] { display: none; }
+  #lightbox img { max-width: 92vw; max-height: 68vh; border-radius: 12px; object-fit: contain; background: #fff; }
+  .lbactions { display: flex; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .lbactions button {
+    border: 0; border-radius: 10px; padding: 12px 16px; font-size: 1rem;
+    background: #fff; color: #1d2a1d;
+  }
+  .lbactions .lbremove { color: #c62828; }
 </style>
 </head>
 <body>
@@ -110,8 +155,17 @@
   <section id="einkauf">
     <form autocomplete="off">
       <input type="text" placeholder="Was wird gebraucht?" enterkeyhint="done" maxlength="120">
+      <button class="photo" type="button" aria-label="Foto hinzufügen">📷</button>
       <button class="add" type="submit">+</button>
     </form>
+
+    <div class="favhead">
+      <h3>⭐ Häufig</h3>
+      <button class="favedit link" type="button" hidden>Bearbeiten</button>
+    </div>
+    <div class="chips"></div>
+    <p class="favhint">Tippe bei einem Eintrag auf ☆, um ihn hier zu speichern.</p>
+
     <ul hidden></ul>
     <div class="empty" hidden>Die Liste ist leer.</div>
     <div class="actions">
@@ -136,11 +190,20 @@
   <p class="hint">Wer diesen Link kennt, sieht und bearbeitet beide Listen. Den Link nur mit deiner Frau teilen.</p>
 </main>
 
+<div id="lightbox" hidden>
+  <img alt="Produktfoto">
+  <div class="lbactions">
+    <button class="lbreplace" type="button">Foto ersetzen</button>
+    <button class="lbremove" type="button">Entfernen</button>
+    <button class="lbclose" type="button">Schließen</button>
+  </div>
+</div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
 import {
   initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
-  collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, writeBatch
+  collection, doc, addDoc, updateDoc, deleteDoc, deleteField, onSnapshot, writeBatch
 } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -187,54 +250,278 @@ function updateStatus() {
     ? "Offline – wird synchronisiert, sobald du wieder Netz hast"
     : "Synchronisiert";
 }
+function trackSnapshot(name, snap) {
+  state[name] = { offline: snap.metadata.fromCache && snap.metadata.hasPendingWrites };
+  updateStatus();
+}
+function trackError(name, err) {
+  console.error(err);
+  state[name] = { error: err.code || err.message };
+  updateStatus();
+}
 
-// ---- Eine Liste (Einkauf oder To-do) aufbauen ----
-function setupList(sectionId, collName) {
-  const root = document.getElementById(sectionId);
+// ---- Hilfsfunktionen ----
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+const same = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
+
+// Foto verkleinern (max. 640 px, JPEG) – so passt es klein in die Datenbank
+async function fileToDataUrl(file, max = 640, quality = 0.72) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((res, rej) => {
+      const i = new Image();
+      i.onload = () => res(i);
+      i.onerror = rej;
+      i.src = url;
+    });
+    const scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth * scale));
+    const h = Math.max(1, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL("image/jpeg", quality);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+function pickPhoto(cb) {
+  const f = document.createElement("input");
+  f.type = "file";
+  f.accept = "image/*";
+  f.onchange = async () => {
+    const file = f.files && f.files[0];
+    if (!file) return;
+    try { cb(await fileToDataUrl(file)); }
+    catch (e) { alert("Das Foto konnte nicht geladen werden."); }
+  };
+  f.click();
+}
+
+// ---- Foto-Vorschau ----
+const lb = document.getElementById("lightbox");
+const lbImg = lb.querySelector("img");
+function closeLightbox() { lb.hidden = true; lbImg.removeAttribute("src"); }
+function openLightbox(src, onReplace, onRemove) {
+  lbImg.src = src;
+  lb.querySelector(".lbreplace").onclick = () => { closeLightbox(); pickPhoto(onReplace); };
+  lb.querySelector(".lbremove").onclick = () => { closeLightbox(); onRemove(); };
+  lb.hidden = false;
+}
+lb.querySelector(".lbclose").onclick = closeLightbox;
+lb.addEventListener("click", e => { if (e.target === lb) closeLightbox(); });
+
+// ---- Einkaufsliste (mit Fotos und Häufig-Auswahl) ----
+function setupShopping() {
+  const root = document.getElementById("einkauf");
   const form = root.querySelector("form");
-  const input = root.querySelector("input");
+  const input = form.querySelector("input[type=text]");
+  const photoBtn = form.querySelector(".photo");
   const ul = root.querySelector("ul");
   const empty = root.querySelector(".empty");
-  const items = collection(db, "lists", code, collName);
+  const chipsBox = root.querySelector(".chips");
+  const favHint = root.querySelector(".favhint");
+  const editBtn = root.querySelector(".favedit");
+  const items = collection(db, "lists", code, "items");
+  const favs = collection(db, "lists", code, "favorites");
+  let current = [], favList = [], pendingImg = null, editMode = false;
+
+  state.items = {};
+  state.favorites = {};
+
+  onSnapshot(items, { includeMetadataChanges: true }, snap => {
+    current = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderItems(); renderFavs();
+    trackSnapshot("items", snap);
+  }, err => trackError("items", err));
+
+  onSnapshot(favs, { includeMetadataChanges: true }, snap => {
+    favList = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    renderItems(); renderFavs();
+    trackSnapshot("favorites", snap);
+  }, err => trackError("favorites", err));
+
+  function addItem(text, img) {
+    text = text.trim();
+    if (!text) return;
+    const ex = current.find(i => same(i.text, text));
+    if (ex) {
+      const upd = {};
+      if (ex.done) { upd.done = false; upd.createdAt = Date.now(); }
+      if (img && !ex.img) upd.img = img;
+      if (Object.keys(upd).length) updateDoc(doc(items, ex.id), upd);
+      return;
+    }
+    const data = { text, done: false, createdAt: Date.now() };
+    if (img) data.img = img;
+    addDoc(items, data);
+  }
+
+  function favFor(text) { return favList.find(f => same(f.text, text)); }
+
+  function toggleFav(it) {
+    const f = favFor(it.text);
+    if (f) { deleteDoc(doc(favs, f.id)); return; }
+    const data = { text: it.text, createdAt: Date.now() };
+    if (it.img) data.img = it.img;
+    addDoc(favs, data);
+  }
+
+  function renderItems() {
+    const sorted = [...current].sort((a, b) =>
+      (a.done === b.done ? (a.createdAt || 0) - (b.createdAt || 0) : a.done ? 1 : -1));
+    ul.innerHTML = "";
+    for (const it of sorted) {
+      const li = el("li", it.done ? "done" : "");
+      li.append(el("div", "box", "✓"));
+
+      if (it.img) {
+        const th = el("img", "thumb");
+        th.src = it.img;
+        th.alt = "";
+        th.onclick = e => {
+          e.stopPropagation();
+          openLightbox(it.img,
+            data => updateDoc(doc(items, it.id), { img: data }),
+            () => updateDoc(doc(items, it.id), { img: deleteField() }));
+        };
+        li.append(th);
+      }
+
+      li.append(el("div", "txt", it.text));
+
+      if (!it.img) {
+        const cam = el("button", "ib", "📷");
+        cam.type = "button";
+        cam.setAttribute("aria-label", "Foto hinzufügen");
+        cam.onclick = e => {
+          e.stopPropagation();
+          pickPhoto(data => updateDoc(doc(items, it.id), { img: data }));
+        };
+        li.append(cam);
+      }
+
+      const isFav = !!favFor(it.text);
+      const star = el("button", "ib star" + (isFav ? " on" : ""), isFav ? "⭐" : "☆");
+      star.type = "button";
+      star.setAttribute("aria-label", isFav ? "Aus Häufig entfernen" : "Zu Häufig hinzufügen");
+      star.onclick = e => { e.stopPropagation(); toggleFav(it); };
+      li.append(star);
+
+      const del = el("button", "ib del", "×");
+      del.type = "button";
+      del.setAttribute("aria-label", "Löschen");
+      del.onclick = e => { e.stopPropagation(); deleteDoc(doc(items, it.id)); };
+      li.append(del);
+
+      li.onclick = () => updateDoc(doc(items, it.id), { done: !it.done });
+      ul.appendChild(li);
+    }
+    empty.hidden = sorted.length > 0;
+    ul.hidden = sorted.length === 0;
+  }
+
+  function renderFavs() {
+    chipsBox.innerHTML = "";
+    const sorted = [...favList].sort((a, b) => a.text.localeCompare(b.text, "de"));
+    for (const f of sorted) {
+      const onList = current.some(i => !i.done && same(i.text, f.text));
+      const chip = el("button", "chip" + (f.img ? " has-img" : "") + (onList && !editMode ? " onlist" : ""));
+      chip.type = "button";
+      if (f.img) { const im = el("img"); im.src = f.img; im.alt = ""; chip.append(im); }
+      chip.append(el("span", "", f.text));
+      if (editMode) chip.append(el("span", "x", "×"));
+      chip.onclick = () => editMode ? deleteDoc(doc(favs, f.id)) : addItem(f.text, f.img);
+      chipsBox.append(chip);
+    }
+    favHint.hidden = favList.length > 0;
+    editBtn.hidden = favList.length === 0;
+    if (favList.length === 0) editMode = false;
+    editBtn.textContent = editMode ? "Fertig" : "Bearbeiten";
+  }
+
+  editBtn.onclick = () => { editMode = !editMode; renderFavs(); };
+
+  function renderPendingPhoto() {
+    photoBtn.innerHTML = "";
+    if (pendingImg) { const im = el("img"); im.src = pendingImg; im.alt = "Foto"; photoBtn.append(im); }
+    else photoBtn.textContent = "📷";
+  }
+  photoBtn.onclick = () => {
+    if (!pendingImg) { pickPhoto(data => { pendingImg = data; renderPendingPhoto(); }); return; }
+    openLightbox(pendingImg,
+      data => { pendingImg = data; renderPendingPhoto(); },
+      () => { pendingImg = null; renderPendingPhoto(); });
+  };
+
+  form.addEventListener("submit", e => {
+    e.preventDefault();
+    const text = input.value.trim();
+    if (!text) return;
+    addItem(text, pendingImg);
+    input.value = "";
+    pendingImg = null;
+    renderPendingPhoto();
+    input.focus();
+  });
+
+  root.querySelector(".clear").onclick = async () => {
+    const done = current.filter(i => i.done);
+    if (!done.length) return;
+    const batch = writeBatch(db);
+    done.forEach(i => batch.delete(doc(items, i.id)));
+    await batch.commit();
+  };
+
+  root.querySelector(".share").onclick = async () => {
+    const url = location.href;
+    try {
+      if (navigator.share) { await navigator.share({ title: "Einkaufszettel", url }); return; }
+      await navigator.clipboard.writeText(url);
+      alert("Link kopiert.");
+    } catch (e) {}
+  };
+}
+
+// ---- To-do-Liste (einfach) ----
+function setupTodo() {
+  const root = document.getElementById("todo");
+  const form = root.querySelector("form");
+  const input = form.querySelector("input");
+  const ul = root.querySelector("ul");
+  const empty = root.querySelector(".empty");
+  const items = collection(db, "lists", code, "todos");
   let current = [];
 
-  state[collName] = {};
+  state.todos = {};
 
   onSnapshot(items, { includeMetadataChanges: true }, snap => {
     current = snap.docs.map(d => ({ id: d.id, ...d.data() }));
     render();
-    state[collName] = { offline: snap.metadata.fromCache && snap.metadata.hasPendingWrites };
-    updateStatus();
-  }, err => {
-    console.error(err);
-    state[collName] = { error: err.code || err.message };
-    updateStatus();
-  });
+    trackSnapshot("todos", snap);
+  }, err => trackError("todos", err));
 
   function render() {
     const sorted = [...current].sort((a, b) =>
       (a.done === b.done ? (a.createdAt || 0) - (b.createdAt || 0) : a.done ? 1 : -1));
     ul.innerHTML = "";
     for (const it of sorted) {
-      const li = document.createElement("li");
-      if (it.done) li.className = "done";
-
-      const box = document.createElement("div");
-      box.className = "box";
-      box.textContent = "✓";
-
-      const txt = document.createElement("div");
-      txt.className = "txt";
-      txt.textContent = it.text;
-
-      const del = document.createElement("button");
-      del.className = "del";
+      const li = el("li", it.done ? "done" : "");
+      li.append(el("div", "box", "✓"), el("div", "txt", it.text));
+      const del = el("button", "ib del", "×");
+      del.type = "button";
       del.setAttribute("aria-label", "Löschen");
-      del.textContent = "×";
       del.onclick = e => { e.stopPropagation(); deleteDoc(doc(items, it.id)); };
-
+      li.append(del);
       li.onclick = () => updateDoc(doc(items, it.id), { done: !it.done });
-      li.append(box, txt, del);
       ul.appendChild(li);
     }
     empty.hidden = sorted.length > 0;
@@ -259,17 +546,8 @@ function setupList(sectionId, collName) {
   };
 }
 
-setupList("einkauf", "items");
-setupList("todo", "todos");
-
-document.querySelector("#einkauf .share").onclick = async () => {
-  const url = location.href;
-  try {
-    if (navigator.share) { await navigator.share({ title: "Einkaufszettel", url }); return; }
-    await navigator.clipboard.writeText(url);
-    alert("Link kopiert.");
-  } catch (e) {}
-};
+setupShopping();
+setupTodo();
 </script>
 </body>
 </html>
