@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Einkauf">
+<meta name="theme-color" content="#2e7d32">
+<title>Einkaufszettel</title>
+<style>
+  :root {
+    --bg: #f4f6f4;
+    --card: #ffffff;
+    --text: #1d2a1d;
+    --muted: #7a867a;
+    --accent: #2e7d32;
+    --line: #e2e8e2;
+    --danger: #c62828;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #121612;
+      --card: #1c231c;
+      --text: #e8efe8;
+      --muted: #8c998c;
+      --accent: #5fbf66;
+      --line: #2a342a;
+      --danger: #ef6b6b;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  header {
+    background: var(--accent);
+    color: #fff;
+    padding: calc(env(safe-area-inset-top) + 14px) 16px 14px;
+    position: sticky;
+    top: 0;
+    z-index: 5;
+  }
+  header h1 { margin: 0; font-size: 1.3rem; }
+  #status { font-size: .78rem; opacity: .85; margin-top: 2px; }
+  main { max-width: 600px; margin: 0 auto; padding: 14px 14px 40px; }
+  form { display: flex; gap: 8px; margin-bottom: 14px; }
+  input[type=text] {
+    flex: 1;
+    font-size: 1.05rem;
+    padding: 13px 14px;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    background: var(--card);
+    color: var(--text);
+    min-width: 0;
+  }
+  input[type=text]:focus { outline: 2px solid var(--accent); border-color: transparent; }
+  button.add {
+    font-size: 1.05rem;
+    padding: 0 18px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--accent);
+    color: #fff;
+    font-weight: 600;
+  }
+  ul { list-style: none; margin: 0; padding: 0; background: var(--card); border-radius: 14px; overflow: hidden; border: 1px solid var(--line); }
+  li { display: flex; align-items: center; gap: 12px; padding: 14px; border-bottom: 1px solid var(--line); }
+  li:last-child { border-bottom: 0; }
+  li .box {
+    width: 26px; height: 26px; flex: none;
+    border: 2px solid var(--accent);
+    border-radius: 50%;
+    display: grid; place-items: center;
+    color: transparent; font-size: 15px; font-weight: 700;
+  }
+  li.done .box { background: var(--accent); color: #fff; }
+  li .txt { flex: 1; font-size: 1.08rem; word-break: break-word; }
+  li.done .txt { text-decoration: line-through; color: var(--muted); }
+  li .del {
+    border: 0; background: transparent; color: var(--muted);
+    font-size: 1.4rem; padding: 4px 8px; line-height: 1;
+  }
+  .empty { text-align: center; color: var(--muted); padding: 34px 10px; }
+  .actions { display: flex; justify-content: space-between; margin-top: 16px; gap: 10px; flex-wrap: wrap; }
+  .actions button {
+    border: 1px solid var(--line); background: var(--card); color: var(--text);
+    padding: 10px 14px; border-radius: 10px; font-size: .92rem;
+  }
+  .actions .danger { color: var(--danger); }
+  .hint { color: var(--muted); font-size: .8rem; margin-top: 20px; line-height: 1.4; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🛒 Einkaufszettel</h1>
+  <div id="status">Verbinde…</div>
+</header>
+<main>
+  <form id="form" autocomplete="off">
+    <input type="text" id="input" placeholder="Was wird gebraucht?" enterkeyhint="done" maxlength="120">
+    <button class="add" type="submit">+</button>
+  </form>
+  <ul id="list"></ul>
+  <div class="empty" id="empty" hidden>Die Liste ist leer.</div>
+  <div class="actions">
+    <button id="clearDone" class="danger">Erledigte entfernen</button>
+    <button id="share">Link teilen</button>
+  </div>
+  <p class="hint">Wer diesen Link kennt, sieht und bearbeitet die Liste. Den Link nur mit deiner Frau teilen.</p>
+</main>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {
+  initializeFirestore, persistentLocalCache, persistentMultipleTabManager,
+  collection, doc, addDoc, updateDoc, deleteDoc, onSnapshot, writeBatch
+} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyCbgSVl_3sP-AnhoI8X0-GoFzCBtM7rfJU",
+  authDomain: "einkaufszettel-f4980.firebaseapp.com",
+  projectId: "einkaufszettel-f4980",
+  storageBucket: "einkaufszettel-f4980.firebasestorage.app",
+  messagingSenderId: "970352659064",
+  appId: "1:970352659064:web:cca3813c8e8107e2c83b8d"
+};
+
+const app = initializeApp(firebaseConfig);
+const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+});
+
+// ---- Listen-Code (geheim) aus der Adresse, sonst neu erzeugen ----
+function randomCode() {
+  const chars = "abcdefghijkmnpqrstuvwxyz23456789";
+  const a = new Uint32Array(14);
+  crypto.getRandomValues(a);
+  return Array.from(a, n => chars[n % chars.length]).join("");
+}
+const params = new URLSearchParams(location.search);
+let code = params.get("liste");
+if (!code) {
+  try { code = localStorage.getItem("liste"); } catch (e) {}
+}
+if (!code) code = randomCode();
+try { localStorage.setItem("liste", code); } catch (e) {}
+if (params.get("liste") !== code) {
+  params.set("liste", code);
+  history.replaceState(null, "", location.pathname + "?" + params.toString());
+}
+
+const items = collection(db, "lists", code, "items");
+
+const $list = document.getElementById("list");
+const $empty = document.getElementById("empty");
+const $status = document.getElementById("status");
+const $input = document.getElementById("input");
+let current = [];
+
+onSnapshot(items, { includeMetadataChanges: true }, snap => {
+  current = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+  render();
+  $status.textContent = snap.metadata.fromCache && snap.metadata.hasPendingWrites
+    ? "Offline – wird synchronisiert, sobald du wieder Netz hast"
+    : "Synchronisiert";
+}, err => {
+  console.error(err);
+  $status.textContent = "Fehler: " + (err.code || err.message);
+});
+
+function render() {
+  const sorted = [...current].sort((a, b) =>
+    (a.done === b.done ? (a.createdAt || 0) - (b.createdAt || 0) : a.done ? 1 : -1));
+  $list.innerHTML = "";
+  for (const it of sorted) {
+    const li = document.createElement("li");
+    if (it.done) li.className = "done";
+
+    const box = document.createElement("div");
+    box.className = "box";
+    box.textContent = "✓";
+
+    const txt = document.createElement("div");
+    txt.className = "txt";
+    txt.textContent = it.text;
+
+    const del = document.createElement("button");
+    del.className = "del";
+    del.setAttribute("aria-label", "Löschen");
+    del.textContent = "×";
+    del.onclick = e => { e.stopPropagation(); deleteDoc(doc(items, it.id)); };
+
+    li.onclick = () => updateDoc(doc(items, it.id), { done: !it.done });
+    li.append(box, txt, del);
+    $list.appendChild(li);
+  }
+  $empty.hidden = sorted.length > 0;
+  $list.hidden = sorted.length === 0;
+}
+
+document.getElementById("form").addEventListener("submit", e => {
+  e.preventDefault();
+  const text = $input.value.trim();
+  if (!text) return;
+  addDoc(items, { text, done: false, createdAt: Date.now() });
+  $input.value = "";
+  $input.focus();
+});
+
+document.getElementById("clearDone").onclick = async () => {
+  const done = current.filter(i => i.done);
+  if (!done.length) return;
+  const batch = writeBatch(db);
+  done.forEach(i => batch.delete(doc(items, i.id)));
+  await batch.commit();
+};
+
+document.getElementById("share").onclick = async () => {
+  const url = location.href;
+  try {
+    if (navigator.share) { await navigator.share({ title: "Einkaufszettel", url }); return; }
+    await navigator.clipboard.writeText(url);
+    alert("Link kopiert.");
+  } catch (e) {}
+};
+</script>
+</body>
+</html>
