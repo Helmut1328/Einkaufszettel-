@@ -101,44 +101,48 @@
   .chips:not(:empty) { margin-bottom: 14px; }
 
   ul { list-style: none; margin: 0; padding: 0; background: var(--card); border-radius: 14px; overflow: hidden; border: 1px solid var(--line); }
-  li { display: flex; align-items: center; gap: 10px; padding: 12px 10px 12px 14px; border-bottom: 1px solid var(--line); }
+  li { display: flex; align-items: center; gap: 8px; padding: 11px 8px 11px 12px; border-bottom: 1px solid var(--line); }
   li:last-child { border-bottom: 0; }
   li .box {
-    width: 26px; height: 26px; flex: none;
+    width: 24px; height: 24px; flex: none;
     border: 2px solid var(--accent);
     border-radius: 50%;
     display: grid; place-items: center;
-    color: transparent; font-size: 15px; font-weight: 700;
+    color: transparent; font-size: 13px; font-weight: 700;
   }
   li.done .box { background: var(--accent); color: #fff; }
-  li .thumb { width: 46px; height: 46px; flex: none; border-radius: 8px; object-fit: cover; border: 1px solid var(--line); }
+  li .thumb { width: 40px; height: 40px; flex: none; border-radius: 7px; object-fit: cover; border: 1px solid var(--line); }
   li.done .thumb { opacity: .5; }
-  li .txt { flex: 1; font-size: 1.08rem; word-break: break-word; min-width: 0; }
+  li .txt { flex: 1; font-size: 1.05rem; word-break: break-word; min-width: 0; }
   li.done .txt { text-decoration: line-through; color: var(--muted); }
   li .ib {
     border: 0; background: transparent; color: var(--muted);
-    font-size: 1.25rem; padding: 6px 5px; line-height: 1; flex: none;
+    font-size: 1.2rem; padding: 5px 4px; line-height: 1; flex: none;
   }
-  li .ib.del { font-size: 1.5rem; }
+  li .ib.del { font-size: 1.4rem; }
   li .ib.star.on { color: var(--star); }
 
-  /* Mengen-Steuerung */
+  /* Mengen-Steuerung – kompakt */
   .qty {
-    display: flex; align-items: center; gap: 1px; flex: none;
-    background: var(--bg); border-radius: 999px; padding: 2px;
+    display: flex; align-items: center; flex: none;
+    height: 26px;
+    border-radius: 7px;
     border: 1px solid var(--line);
+    overflow: hidden;
+    background: var(--bg);
   }
   .qty button {
-    width: 30px; height: 30px; border: 0; border-radius: 50%;
-    background: transparent; color: var(--text); font-size: 1.15rem;
-    font-weight: 600; line-height: 1; padding: 0;
+    width: 22px; height: 26px; border: 0;
+    background: transparent; color: var(--muted);
+    font-size: .95rem; font-weight: 600; line-height: 1; padding: 0;
   }
-  .qty button:active { background: var(--line); }
+  .qty button:active { background: var(--line); color: var(--text); }
   .qty span {
-    min-width: 1.4em; text-align: center; font-weight: 700; font-size: 1rem;
-    color: var(--accent); padding: 0 2px;
+    min-width: 1.1em; text-align: center;
+    font-weight: 700; font-size: .88rem;
+    color: var(--accent); padding: 0 1px;
   }
-  li.done .qty { opacity: .55; }
+  li.done .qty { opacity: .5; }
   li.done .qty span { color: var(--muted); }
 
   .empty { text-align: center; color: var(--muted); padding: 26px 10px; }
