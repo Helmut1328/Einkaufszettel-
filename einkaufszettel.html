@@ -96,6 +96,7 @@
   .chip img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
   .chip.onlist { opacity: .45; }
   .chip .x { color: var(--danger); font-weight: 700; }
+  .chip .q { font-weight: 600; color: var(--accent); margin-right: 2px; }
   .favhint { color: var(--muted); font-size: .8rem; margin: 0 0 14px; }
   .chips:not(:empty) { margin-bottom: 14px; }
 
@@ -120,6 +121,26 @@
   }
   li .ib.del { font-size: 1.5rem; }
   li .ib.star.on { color: var(--star); }
+
+  /* Mengen-Steuerung */
+  .qty {
+    display: flex; align-items: center; gap: 1px; flex: none;
+    background: var(--bg); border-radius: 999px; padding: 2px;
+    border: 1px solid var(--line);
+  }
+  .qty button {
+    width: 30px; height: 30px; border: 0; border-radius: 50%;
+    background: transparent; color: var(--text); font-size: 1.15rem;
+    font-weight: 600; line-height: 1; padding: 0;
+  }
+  .qty button:active { background: var(--line); }
+  .qty span {
+    min-width: 1.4em; text-align: center; font-weight: 700; font-size: 1rem;
+    color: var(--accent); padding: 0 2px;
+  }
+  li.done .qty { opacity: .55; }
+  li.done .qty span { color: var(--muted); }
+
   .empty { text-align: center; color: var(--muted); padding: 26px 10px; }
   .actions { display: flex; justify-content: space-between; margin-top: 14px; gap: 10px; flex-wrap: wrap; }
   .actions button {
@@ -154,7 +175,7 @@
 <main>
   <section id="einkauf">
     <form autocomplete="off">
-      <input type="text" placeholder="Was wird gebraucht?" enterkeyhint="done" maxlength="120">
+      <input type="text" placeholder="z. B. 2 Milch oder Brot" enterkeyhint="done" maxlength="120">
       <button class="photo" type="button" aria-label="Foto hinzufügen">📷</button>
       <button class="add" type="submit">+</button>
     </form>
@@ -187,7 +208,8 @@
     </div>
   </section>
 
-  <p class="hint">Wer diesen Link kennt, sieht und bearbeitet beide Listen. Den Link nur mit deiner Frau teilen.</p>
+  <p class="hint">Wer diesen Link kennt, sieht und bearbeitet beide Listen. Den Link nur mit deiner Frau teilen.<br>
+  Menge eingeben z. B. mit „2 Milch“ oder „Milch 3“. In der Liste mit − / + nachträglich ändern.</p>
 </main>
 
 <div id="lightbox" hidden>
@@ -269,6 +291,22 @@ function el(tag, cls, text) {
 }
 const same = (a, b) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
+/** Eingabe parsen: „2 Milch“, „Milch 3“, „3x Eier“, „Milch“ → { qty, text } */
+function parseInput(raw) {
+  let text = (raw || "").trim();
+  if (!text) return { qty: 1, text: "" };
+
+  // führende Zahl: 2 Milch | 2x Milch | 2×Milch | 2 * Milch
+  let m = text.match(/^(\d+)\s*[x×*]?\s+(.+)$/i);
+  if (m) return { qty: Math.max(1, parseInt(m[1], 10) || 1), text: m[2].trim() };
+
+  // Zahl am Ende: Milch 2 | Milch x2 | Milch × 3
+  m = text.match(/^(.+?)\s+[x×*]?\s*(\d+)$/i);
+  if (m) return { qty: Math.max(1, parseInt(m[2], 10) || 1), text: m[1].trim() };
+
+  return { qty: 1, text };
+}
+
 // Foto verkleinern (max. 640 px, JPEG) – so passt es klein in die Datenbank
 async function fileToDataUrl(file, max = 640, quality = 0.72) {
   const url = URL.createObjectURL(file);
@@ -319,7 +357,7 @@ function openLightbox(src, onReplace, onRemove) {
 lb.querySelector(".lbclose").onclick = closeLightbox;
 lb.addEventListener("click", e => { if (e.target === lb) closeLightbox(); });
 
-// ---- Einkaufsliste (mit Fotos und Häufig-Auswahl) ----
+// ---- Einkaufsliste (mit Fotos, Mengen und Häufig-Auswahl) ----
 function setupShopping() {
   const root = document.getElementById("einkauf");
   const form = root.querySelector("form");
@@ -349,20 +387,40 @@ function setupShopping() {
     trackSnapshot("favorites", snap);
   }, err => trackError("favorites", err));
 
-  function addItem(text, img) {
-    text = text.trim();
+  function addItem(text, img, qty = 1) {
+    text = (text || "").trim();
     if (!text) return;
+    qty = Math.max(1, parseInt(qty, 10) || 1);
+
     const ex = current.find(i => same(i.text, text));
     if (ex) {
       const upd = {};
-      if (ex.done) { upd.done = false; upd.createdAt = Date.now(); }
+      const oldQty = Math.max(1, parseInt(ex.qty, 10) || 1);
+      if (ex.done) {
+        // war erledigt → neu aktivieren mit der gewünschten Menge
+        upd.done = false;
+        upd.createdAt = Date.now();
+        upd.qty = qty;
+      } else {
+        // schon auf der Liste → Menge addieren
+        upd.qty = oldQty + qty;
+      }
       if (img && !ex.img) upd.img = img;
       if (Object.keys(upd).length) updateDoc(doc(items, ex.id), upd);
       return;
     }
-    const data = { text, done: false, createdAt: Date.now() };
+    const data = { text, done: false, createdAt: Date.now(), qty };
     if (img) data.img = img;
     addDoc(items, data);
+  }
+
+  function setQty(it, next) {
+    next = Math.max(0, parseInt(next, 10) || 0);
+    if (next <= 0) {
+      deleteDoc(doc(items, it.id));
+      return;
+    }
+    updateDoc(doc(items, it.id), { qty: next });
   }
 
   function favFor(text) { return favList.find(f => same(f.text, text)); }
@@ -370,7 +428,11 @@ function setupShopping() {
   function toggleFav(it) {
     const f = favFor(it.text);
     if (f) { deleteDoc(doc(favs, f.id)); return; }
-    const data = { text: it.text, createdAt: Date.now() };
+    const data = {
+      text: it.text,
+      createdAt: Date.now(),
+      qty: Math.max(1, parseInt(it.qty, 10) || 1)
+    };
     if (it.img) data.img = it.img;
     addDoc(favs, data);
   }
@@ -395,6 +457,39 @@ function setupShopping() {
         };
         li.append(th);
       }
+
+      // Mengen-Steuerung (− / Zahl / +)
+      const qtyWrap = el("div", "qty");
+      const q = Math.max(1, parseInt(it.qty, 10) || 1);
+
+      const minus = el("button", "", "−");
+      minus.type = "button";
+      minus.setAttribute("aria-label", "Menge verringern");
+      minus.onclick = e => {
+        e.stopPropagation();
+        setQty(it, q - 1);
+      };
+
+      const num = el("span", "", String(q));
+      num.title = "Tippen zum direkten Ändern";
+      num.onclick = e => {
+        e.stopPropagation();
+        const raw = prompt("Menge eingeben:", String(q));
+        if (raw == null) return;
+        const n = parseInt(raw, 10);
+        if (!isNaN(n)) setQty(it, n);
+      };
+
+      const plus = el("button", "", "+");
+      plus.type = "button";
+      plus.setAttribute("aria-label", "Menge erhöhen");
+      plus.onclick = e => {
+        e.stopPropagation();
+        setQty(it, q + 1);
+      };
+
+      qtyWrap.append(minus, num, plus);
+      li.append(qtyWrap);
 
       li.append(el("div", "txt", it.text));
 
@@ -437,9 +532,13 @@ function setupShopping() {
       const chip = el("button", "chip" + (f.img ? " has-img" : "") + (onList && !editMode ? " onlist" : ""));
       chip.type = "button";
       if (f.img) { const im = el("img"); im.src = f.img; im.alt = ""; chip.append(im); }
+      const fq = Math.max(1, parseInt(f.qty, 10) || 1);
+      if (fq > 1) chip.append(el("span", "q", fq + "×"));
       chip.append(el("span", "", f.text));
       if (editMode) chip.append(el("span", "x", "×"));
-      chip.onclick = () => editMode ? deleteDoc(doc(favs, f.id)) : addItem(f.text, f.img);
+      chip.onclick = () => editMode
+        ? deleteDoc(doc(favs, f.id))
+        : addItem(f.text, f.img, fq);
       chipsBox.append(chip);
     }
     favHint.hidden = favList.length > 0;
@@ -464,9 +563,9 @@ function setupShopping() {
 
   form.addEventListener("submit", e => {
     e.preventDefault();
-    const text = input.value.trim();
+    const { qty, text } = parseInput(input.value);
     if (!text) return;
-    addItem(text, pendingImg);
+    addItem(text, pendingImg, qty);
     input.value = "";
     pendingImg = null;
     renderPendingPhoto();
