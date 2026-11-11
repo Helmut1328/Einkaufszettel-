@@ -113,6 +113,21 @@
   li.done .box { background: var(--accent); color: #fff; }
   li .thumb { width: 40px; height: 40px; flex: none; border-radius: 7px; object-fit: cover; border: 1px solid var(--line); }
   li.done .thumb { opacity: .5; }
+
+  /* Drag-Griff zum Umsortieren */
+  li .grip {
+    flex: none; width: 22px; align-self: stretch;
+    display: grid; place-items: center;
+    color: var(--muted); font-size: 1.1rem; line-height: 1;
+    touch-action: none; user-select: none; -webkit-user-select: none;
+    cursor: grab; margin: -11px 0 -11px -6px; padding-left: 4px;
+  }
+  li.dragging {
+    background: var(--bg);
+    box-shadow: 0 6px 18px rgba(0,0,0,.25);
+    position: relative; z-index: 2;
+  }
+  li.dragging .grip { cursor: grabbing; color: var(--accent); }
   li .txt { flex: 1; font-size: 1.05rem; word-break: break-word; min-width: 0; }
   li.done .txt { text-decoration: line-through; color: var(--muted); }
   li .ib {
@@ -213,7 +228,8 @@
   </section>
 
   <p class="hint">Wer diesen Link kennt, sieht und bearbeitet beide Listen. Den Link nur mit deiner Frau teilen.<br>
-  Menge eingeben z. B. mit „2 Milch“ oder „Milch 3“. In der Liste mit − / + nachträglich ändern.</p>
+  Menge eingeben z. B. mit „2 Milch“ oder „Milch 3“. In der Liste mit − / + nachträglich ändern.<br>
+  Reihenfolge ändern: den Griff ⋮⋮ links am Eintrag gedrückt halten und verschieben.</p>
 </main>
 
 <div id="lightbox" hidden>
@@ -348,6 +364,73 @@ function pickPhoto(cb) {
   f.click();
 }
 
+// ---- Reihenfolge (Drag & Drop) ----
+const ord = i => (typeof i.order === "number" ? i.order : (i.createdAt || 0));
+const sortList = arr => [...arr].sort((a, b) =>
+  !!a.done === !!b.done ? ord(a) - ord(b) : (a.done ? 1 : -1));
+
+const dragState = { active: false, redo: new Set() };
+
+/** Griffe (.grip) in der Liste per Finger/Maus verschieben; commit(ids) bekommt die neue Reihenfolge */
+function enableDrag(ul, commit) {
+  ul.addEventListener("pointerdown", e => {
+    const grip = e.target.closest(".grip");
+    if (!grip || (e.pointerType === "mouse" && e.button !== 0)) return;
+    const li = grip.closest("li");
+    e.preventDefault();
+    dragState.active = true;
+    li.classList.add("dragging");
+    try { grip.setPointerCapture(e.pointerId); } catch (_) {}
+
+    const move = ev => {
+      const y = ev.clientY;
+      if (y < 80) window.scrollBy(0, -14);
+      else if (y > window.innerHeight - 80) window.scrollBy(0, 14);
+      const box = ul.getBoundingClientRect();
+      const hit = document.elementFromPoint(box.left + box.width / 2, y);
+      const t = hit && hit.closest ? hit.closest("li") : null;
+      if (!t || t === li || t.parentNode !== ul || t.dataset.done !== li.dataset.done) return;
+      const r = t.getBoundingClientRect();
+      const targetIsBelow = !!(li.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING);
+      if (targetIsBelow && y > r.top + r.height / 2) t.after(li);
+      else if (!targetIsBelow && y < r.top + r.height / 2) t.before(li);
+    };
+    const end = () => {
+      grip.removeEventListener("pointermove", move);
+      grip.removeEventListener("pointerup", end);
+      grip.removeEventListener("pointercancel", end);
+      li.classList.remove("dragging");
+      dragState.active = false;
+      commit([...ul.children].map(x => x.dataset.id));
+      const redo = [...dragState.redo];
+      dragState.redo.clear();
+      redo.forEach(fn => fn());
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", end);
+    grip.addEventListener("pointercancel", end);
+  });
+}
+
+function makeGrip() {
+  const g = el("span", "grip", "⋮⋮");
+  g.setAttribute("aria-label", "Zum Umsortieren ziehen");
+  g.onclick = e => e.stopPropagation();
+  return g;
+}
+
+/** Neue Reihenfolge speichern (nur geänderte Einträge) */
+async function saveOrder(colRef, list, ids) {
+  const byId = new Map(list.map(i => [i.id, i]));
+  const batch = writeBatch(db);
+  let n = 0;
+  ids.forEach((id, idx) => {
+    const it = byId.get(id);
+    if (it && it.order !== idx) { batch.update(doc(colRef, id), { order: idx }); n++; }
+  });
+  if (n) await batch.commit();
+}
+
 // ---- Foto-Vorschau ----
 const lb = document.getElementById("lightbox");
 const lbImg = lb.querySelector("img");
@@ -442,11 +525,14 @@ function setupShopping() {
   }
 
   function renderItems() {
-    const sorted = [...current].sort((a, b) =>
-      (a.done === b.done ? (a.createdAt || 0) - (b.createdAt || 0) : a.done ? 1 : -1));
+    if (dragState.active) { dragState.redo.add(renderItems); return; }
+    const sorted = sortList(current);
     ul.innerHTML = "";
     for (const it of sorted) {
       const li = el("li", it.done ? "done" : "");
+      li.dataset.id = it.id;
+      li.dataset.done = it.done ? "1" : "0";
+      li.append(makeGrip());
       li.append(el("div", "box", "✓"));
 
       if (it.img) {
@@ -528,7 +614,10 @@ function setupShopping() {
     ul.hidden = sorted.length === 0;
   }
 
+  enableDrag(ul, ids => saveOrder(items, current, ids));
+
   function renderFavs() {
+    if (dragState.active) { dragState.redo.add(renderFavs); return; }
     chipsBox.innerHTML = "";
     const sorted = [...favList].sort((a, b) => a.text.localeCompare(b.text, "de"));
     for (const f of sorted) {
@@ -613,12 +702,14 @@ function setupTodo() {
   }, err => trackError("todos", err));
 
   function render() {
-    const sorted = [...current].sort((a, b) =>
-      (a.done === b.done ? (a.createdAt || 0) - (b.createdAt || 0) : a.done ? 1 : -1));
+    if (dragState.active) { dragState.redo.add(render); return; }
+    const sorted = sortList(current);
     ul.innerHTML = "";
     for (const it of sorted) {
       const li = el("li", it.done ? "done" : "");
-      li.append(el("div", "box", "✓"), el("div", "txt", it.text));
+      li.dataset.id = it.id;
+      li.dataset.done = it.done ? "1" : "0";
+      li.append(makeGrip(), el("div", "box", "✓"), el("div", "txt", it.text));
       const del = el("button", "ib del", "×");
       del.type = "button";
       del.setAttribute("aria-label", "Löschen");
@@ -630,6 +721,8 @@ function setupTodo() {
     empty.hidden = sorted.length > 0;
     ul.hidden = sorted.length === 0;
   }
+
+  enableDrag(ul, ids => saveOrder(items, current, ids));
 
   form.addEventListener("submit", e => {
     e.preventDefault();
