@@ -369,7 +369,11 @@ const ord = i => (typeof i.order === "number" ? i.order : (i.createdAt || 0));
 const sortList = arr => [...arr].sort((a, b) =>
   !!a.done === !!b.done ? ord(a) - ord(b) : (a.done ? 1 : -1));
 
-const dragState = { active: false, redo: new Set() };
+const dragState = { active: false, redo: new Set(), last: 0 };
+// Klick direkt nach dem Ziehen unterdrücken (sonst wird der Eintrag abgehakt)
+document.addEventListener("click", e => {
+  if (Date.now() - dragState.last < 600) { e.stopPropagation(); e.preventDefault(); }
+}, true);
 
 /** Griffe (.grip) in der Liste per Finger/Maus verschieben; commit(ids) bekommt die neue Reihenfolge */
 function enableDrag(ul, commit) {
@@ -383,6 +387,8 @@ function enableDrag(ul, commit) {
     try { grip.setPointerCapture(e.pointerId); } catch (_) {}
 
     const move = ev => {
+      if (ev.pointerId !== e.pointerId) return;
+      ev.preventDefault();
       const y = ev.clientY;
       if (y < 80) window.scrollBy(0, -14);
       else if (y > window.innerHeight - 80) window.scrollBy(0, 14);
@@ -410,20 +416,22 @@ function enableDrag(ul, commit) {
         move.forEach(n => li.after(n));
       }
     };
-    const end = () => {
-      grip.removeEventListener("pointermove", move);
-      grip.removeEventListener("pointerup", end);
-      grip.removeEventListener("pointercancel", end);
+    const end = ev => {
+      if (ev && ev.pointerId !== e.pointerId) return;
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
       li.classList.remove("dragging");
       dragState.active = false;
+      dragState.last = Date.now();
       commit([...ul.children].map(x => x.dataset.id));
       const redo = [...dragState.redo];
       dragState.redo.clear();
       redo.forEach(fn => fn());
     };
-    grip.addEventListener("pointermove", move);
-    grip.addEventListener("pointerup", end);
-    grip.addEventListener("pointercancel", end);
+    window.addEventListener("pointermove", move, { passive: false });
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
   });
 }
 
