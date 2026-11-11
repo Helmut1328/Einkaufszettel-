@@ -392,8 +392,23 @@ function enableDrag(ul, commit) {
       if (!t || t === li || t.parentNode !== ul || t.dataset.done !== li.dataset.done) return;
       const r = t.getBoundingClientRect();
       const targetIsBelow = !!(li.compareDocumentPosition(t) & Node.DOCUMENT_POSITION_FOLLOWING);
-      if (targetIsBelow && y > r.top + r.height / 2) t.after(li);
-      else if (!targetIsBelow && y < r.top + r.height / 2) t.before(li);
+      // Nicht den gehaltenen Eintrag umhängen (sonst geht die Pointer-Erfassung verloren),
+      // sondern die Nachbarn um ihn herum verschieben.
+      if (targetIsBelow && y > r.top + r.height / 2) {
+        const move = [];
+        for (let n = li.nextElementSibling; n; n = n.nextElementSibling) {
+          move.push(n);
+          if (n === t) break;
+        }
+        move.forEach(n => li.before(n));
+      } else if (!targetIsBelow && y < r.top + r.height / 2) {
+        const move = [];
+        for (let n = li.previousElementSibling; n; n = n.previousElementSibling) {
+          move.push(n);
+          if (n === t) break;
+        }
+        move.forEach(n => li.after(n));
+      }
     };
     const end = () => {
       grip.removeEventListener("pointermove", move);
